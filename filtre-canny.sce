@@ -3,41 +3,15 @@ function main()
     masque_gaussien = [2,4,2;
     4,9,4;
     2,4,2];
-
-    // disp("MASQUE 3*3 : ")
-    // disp(masque_gaussien);
-
-    //image = ones(10,10); // Cas très simple pour tester 
-    //image = chargerImage('\\Mac\Home\Desktop\TraitementImage\LENNA.jpg', 0);
-    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\logo2.png', 1);
-    // image = chargerImage('\\Mac\Home\Desktop\TraitementImage\little.jpg', 0);
+    
+    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\LENNA.jpg', 0);
+//    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\logo2.png', 1);
 
     image_filtre = appliquerFiltre(image, masque_gaussien); 
-    //afficherImage(image_filtre);
+    afficherImage(image_filtre);
 
     [Es,E0,non_maximums] = supprimerNonMaximums(image_filtre);
-    afficherImage(cat(2,Es,E0,non_maximums));
-    //afficherImage(image_filtre - non_maximums);
-
-    // ======================================================
-    // VERIFICATIONS AVEC LES FONCTIONS INCLUSENT DANS SCILAB
-    // ======================================================
-
-    // scilab_image_contours = edge(scilab_image_filtre, 'canny'); // Détection des contours avec le filtre de Canny
-    // assert_checktrue(isequal(image_contours,scilab_image_contours)); // Validation du filtre de Canny
-
-    // VALIDATION PARTIELLES
-    // ---------------------
-
-    // masque_gaussien = normaliserMasque(masque_gaussien); // imfilter s'attends à un masque déjà normalisé
-    // scilab_image_filtre = imfilter(image, masque_gaussien); // La fonction 'imfilter' permet de faire une convolution d'une image par un filtre.
-    // disp(image_filtre - scilab_image_filtre); // Il y a des effets de bords sur les contours. On peut cependant vérifier que l'écart entre les deux images tends vers 0 sur la pluspart des pixels.
-
-    // AFFICHAGE
-    // ---------
-
-    // render = [image image_filtre scilab_image_filtre]; // Pour pouvoir afficher plusieurs images en même temps
-    // afficherImage(image_filtre);
+    afficherImage(cat(2,image_filtre,Es,E0,non_maximums));
 
 endfunction
 
@@ -71,22 +45,13 @@ endfunction
 // 1) REHAUSSEMENT DE CANNY
 // ========================
 
-
-// On divise par la somme des pixels du masque pour ne pas modifier la valeur moyenne de l'image
-function masque = normaliserMasque(masque)
-    // (re)-definition du masque en divisant chaque valeur par la somme des valeurs du masque
-    total_pixels = sum(masque);
-    if total_pixels == 0 then
-        total_pixels = 1;
-    end
-    masque = (1 / total_pixels). * masque; 
-endfunction
-
 // La première étape est de réduire le bruit de l'image originale avant d'en détecter les contours
 // Ceci permet d'éliminer les pixels isolés qui pourraient donner une forte intensité lors du calcul du gradient et donc de faux positifs
 function image_filtre = appliquerFiltre(image,masque)
+    // Pré-requis 
     masque = normaliserMasque(masque);
     image = agrandirImage(image);
+    
     demi_taille_masque_x = floor(size(masque, 1) / 2);
     demi_taille_masque_y = floor(size(masque, 2) / 2);
     [nb_lignes_image, nb_colonnes_image] = size(image); 
@@ -106,7 +71,8 @@ function image_filtre = appliquerFiltre(image,masque)
                     somme = somme + (pixel_masque * pixel_image);
                 end
             end
-            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme; // Le résultat est de la taille de l'image initiale, avant aggrandissement, création à la volée.
+            // Le résultat est de la taille de l'image initiale, avant aggrandissement, création à la volée.
+            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme;
         end
     end
 endfunction
@@ -114,36 +80,34 @@ endfunction
 // Calcul pour chaque pixel de l'image, la norme du gradient et l'angle de la normale au gradient.
 // Un filtre gaussien doit déjà avoir été appliqué à l'image d'entrée.
 function [norme_gradient, angle_normale_gradient] = calculGradient(image)
+    // Pré-requis et initialisations
     masque_convolution_x = [1,0,-1]; // Donné dans le cours
-    masque_convolution_y = [1;0;-1]; // Donné dans le cours
-
+    masque_convolution_y = [1;0;-1]; 
+    
     matrice_gradient_x = appliquerFiltre(image, masque_convolution_x); 
     matrice_gradient_y = appliquerFiltre(image, masque_convolution_y); 
 
     [nb_lignes_image, nb_colonnes_image] = size(image); 
 
-    norme_gradient = zeros(nb_lignes_image, nb_colonnes_image); // es
-    angle_normale_gradient = zeros(nb_lignes_image, nb_colonnes_image); // eo
+    norme_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'es'
+    angle_normale_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'eo'
 
+    // On calcul pour chaque pixels de l'image
     for x = 1 : nb_lignes_image
         for y = 1 : nb_colonnes_image
             Jx = matrice_gradient_x(x,y);
             Jy = matrice_gradient_y(x,y);
             norme_gradient(x,y) = sqrt(Jx**2 + Jy**2); 
-            angle_normale_gradient(x,y) = atan(-Jy, Jx); // Résultat en radians, à convertir en degrés // TODO: valeures
+            angle_normale_gradient(x,y) = atan(-Jy, Jx); // Résultat en radians, à convertir en degrés et à normaliser
             angle_normale_gradient(x,y) = approxAngleNormaleGradient(angle_normale_gradient(x,y));
         end
     end
 endfunction
 
-function degre = radianEnDegre(radian)
-    degre = 180 * radian / %pi;
-endfunction
-
-function valeur_degre = approxAngleNormaleGradient(valeur_radian)
-    valeur_degre = radianEnDegre(valeur_radian);
-    if (valeur_degre < 0) then
-        valeur_degre = valeur_degre + 180; // Se ramener au demi cercle trigo supérieur
+function angle_degre = approxAngleNormaleGradient(angle_radian)
+    angle_degre = radianEnDegre(angle_radian);
+    if (angle_degre < 0) then
+        angle_degre = angle_degre + 180; // Se ramener au demi cercle trigo supérieur
     end
     // On veut maintenant n'avoir que des valeurs 0, 45, 90, 135 ou 180°
     seuil_min_45 = 45 / 2;
@@ -152,16 +116,15 @@ function valeur_degre = approxAngleNormaleGradient(valeur_radian)
     seuil_max_135 = (180 + 135) / 2;
 
     // On sait que valeur_degre > 0
-    if valeur_degre >= seuil_min_45 & valeur_degre < seuil_min_90 then
-        valeur_degre = 45;
-    elseif valeur_degre >= seuil_min_90 & valeur_degre < seuil_min_135 then
-        valeur_degre = 90;
-    elseif valeur_degre >= seuil_min_135 & valeur_degre < seuil_max_135  then
-        valeur_degre = 135;
+    if angle_degre >= seuil_min_45 & angle_degre < seuil_min_90 then
+        angle_degre = 45;
+    elseif angle_degre >= seuil_min_90 & angle_degre < seuil_min_135 then
+        angle_degre = 90;
+    elseif angle_degre >= seuil_min_135 & angle_degre < seuil_max_135  then
+        angle_degre = 135;
     else
-        valeur_degre = 0;
+        angle_degre = 0; // Pour le cas de 180°, on re-boucle sur 0
     end
-    // TODO: vérification que valeur_degre est forcément une des valeur voulue
 endfunction
 
 // Pour pouvoir appliquer un masque sur l'image, on doit pouvoir se placer sur des pixels se trouvant à côté de notre image de départ.
@@ -170,7 +133,7 @@ function image_aggrandie = agrandirImage(image, masque)
     [nb_lignes_image, nb_colonnes_image] = size(image);
 
     demi_taille_masque_x = floor(nb_lignes_masque / 2); // Permet de savoir combien de pixels il faut agrandir le cadre de notre image originale. Lignes ou colonnes peu importe car masque carré. Floor = arrondi vers le bas.
-    demi_taille_masque_y = floor(nb_colonnes_masque / 2); // Permet de savoir combien de pixels il faut agrandir le cadre de notre image originale. Lignes ou colonnes peu importe car masque carré. Floor = arrondi vers le bas.
+    demi_taille_masque_y = floor(nb_colonnes_masque / 2); // On doit fonctionner peu importe la taille du masque, donc il faut différencier les lignes et les colonnes
 
     // Création d'une nouvelle matrice (vide) de taille aggrandie.
     nb_lignes_aggrandie = nb_lignes_image + 2 * demi_taille_masque_x; // On multiplie par 2 car on souhaite agrandir sur les quatres extrémitées
@@ -215,7 +178,7 @@ function [es,eo,non_maximums] = supprimerNonMaximums(image)
 endfunction
 
 function [voisin1, voisin2] = recupererVoisins(angle,es,x,y)
-    select angle
+    select angle // En fonction de la valeur de l'angle que l'on a, on récupère des voisins différents
     case 0 then
         voisin1 = recupererValeurVoisin(es, x , y - 1);
         voisin2 = recupererValeurVoisin(es, x , y + 1);
@@ -229,12 +192,14 @@ function [voisin1, voisin2] = recupererVoisins(angle,es,x,y)
         voisin1 = recupererValeurVoisin(es, x - 1, y - 1);
         voisin2 = recupererValeurVoisin(es, x + 1, y + 1);
     end
+    // On a fait une normalisation de l'angle, i n'y a pas d'autre valeurs possible que ces 4 là
 endfunction
 
+// Retourne la norme d'un pixel ou 0 si le pixel est en dehors de la matrice
 function norme = recupererValeurVoisin(es,x,y)
     [nb_lignes, nb_colonnes] = size(es);
-    if x>0 & x<=nb_lignes & y>0 & y<=nb_colonnes then // Si on tente d'accéder à un pixel en dehors de notre matrice, on renvoi 0
-        norme = es(x,y);
+    if x > 0 & x <= nb_lignes & y > 0 & y <= nb_colonnes then // Si on tente d'accéder à un pixel en dehors de notre matrice, on renvoi 0
+        norme = es(x,y); 
     else
         norme = 0 ;
     end
@@ -258,6 +223,17 @@ endfunction
 // FONCTIONS UTILITAIRES
 // =====================
 
+// On divise par la somme des pixels du masque pour ne pas modifier la valeur moyenne de l'image
+function masque = normaliserMasque(masque)
+    if sum(masque) <> 0 then // On s'assure de ne pas tenter une division par 0 (cas des masques de convolutions pour le calcul des gradients par exemple)
+        masque = (1 / sum(masque)). * masque; 
+    end
+endfunction
+
+function degre = radianEnDegre(radian)
+    degre = 180 * radian / %pi;
+endfunction
+
 function matrice_image = chargerImage(path,isRGB)
     // Dans tous les cas, nous voulons travailler sur une image en niveaux de gris (pas de couleurs)
     if isRGB == 0 then
@@ -276,4 +252,5 @@ function image = ecrireImage(matrice_image, nom_fichier)
     // Sauvegarde l'image sur le système de fichier, à partir de l'emplacement courant
     image = imwrite(matrice_image, nom_fichier);
 endfunction
+
 main
