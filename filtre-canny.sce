@@ -1,65 +1,77 @@
 function main()
-    // Plus le masque est grand, moins le détecteur est sensible au bruit
-    masque_gaussien = [2, 4, 2;
-    4, 9, 4;
-    2, 4, 2];
+    // On prends un masque symétrique. Plus le masque est grand, moins le détecteur est sensible au bruit
+    masque_gaussien = [2, 4, 5, 4, 2;
+    4, 9, 12, 9, 4;
+    5, 12, 15, 12, 5;
+    4, 9, 12, 9, 4;
+    2, 4, 5, 4, 2];
 
-    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\LENNA.jpg', 0);
-    //    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\logo2.png', 1);
+    //image = chargerImage('\\Mac\Home\Desktop\TraitementImage\LENNA.jpg', 0);
+    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\olympics2.jpg', 1);
 
-    image_filtre = appliquerFiltre(image, masque_gaussien); 
-    afficherImage(image_filtre);
+    contours = filtreCanny(image, masque_gaussien, 20, 5); // Version "manuelle"
+    //contours = filtreCanny(image, masque_gaussien, 20); // Version semi-automatique TODO: pas terminée
 
-    [normale_gradient, angle_normale_gradient, non_maximums] = supprimerNonMaximums(image_filtre);
-    afficherImage(cat(2, image_filtre, normale_gradient, angle_normale_gradient, non_maximums));
-
+    // Affichage de l'image originale et des contours détectés par l'algorithme de Canny
+    render = cat(2, image, contours);
+    afficherImage(render);
 endfunction
 
 // =============================
 // ALGORITHME DU FILTRE DE CANNY
 // =============================
 
-// Un seuil trop bas peut conduire à la détection de faux positifs. Inversement, un seuil trop haut peut empêcher la détection de contours peu marqués mais représentant de l'information utile
-function image_contours = filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas)
-    // Le masque est symétrique. Il n'y a pas besoin de retourner le masque dans les 2D lors de la convolution.
+// Un seuil trop bas peut conduire à la détection de faux positifs. Inversement, un seuil trop haut peut empêcher la détection de contours peu marqués 
+// Soucis : seuils difficiles à trouver et changent d'une image à l'autre ! Il faut y aller à taton pour chaque image pour avoir un bon rendu, c'est lourd et nécéssite une intervention manuelle
+function contours = filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas)
     assert_checktrue(isequal(masque_gaussien, masque_gaussien.')); // Une matrice est symétrique si elle est égale à sa transposée.  
 
-    // Chaine sequentielle de 4 etape
-    // Boucle 1 : filtrage gaussien
-    // Boucle 2 : gradients en x et y
-    // Boucle 3 : supression des non maximums
-    // Boucle 4 : seuillage hysteresis
-    // TODO: bonne séquence d'appels des fonctions ci dessous (voir sujet TP)
+    // Etape 1 : Appliquer un filtre gaussien pour réduction du bruit
+    image_filtre = appliquerFiltre(image, masque_gaussien); 
+
+    // Etape 2 : Calcul des gradients en x et y ainsi que l'angle de la normale
+    [norme_gradient, angle_normale_gradient] = calculGradient(image_filtre);
+
+    // Etape 3 : Supprimer les non maximums
+    non_maximums = supprimerNonMaximums(image_filtre, norme_gradient, angle_normale_gradient);
+
+    // Etape 4 : Seuillage par hystérésis
+    contours = seuillageHysteresis(non_maximums, angle_normale_gradient, seuil_haut, seuil_bas);
+
+    // Affichage de toute les étapes
+    //render = cat(2, image, image_filtre, non_maximums, contours);
+    //afficherImage(render);
 endfunction
 
 // Il n'existe pas actuellement de méthode générique pour déterminer des seuils produisant des résultats satisfaisants sur tous les types d'images.
-function image_contours = filtreCannySemiAuto(image, masque_gaussien)
-    // TODO: Etre dépendant que d'un seul seuil et non 2. seuil_bas = 0.5 * seuil_haut et il faut calculer le seuil haut (voir sujet TP)
-    // seuil_haut = ...
-    // seuil_bas = seuil_haut / 2;
-    // filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas);
+function image_contours = filtreCannySemiAuto(image, masque_gaussien, seuil_haut)
+    // TODO: Il faut calculer le seuil haut à l'aidre de la fonction de répartition (voir sujet de TP)
+    seuil_bas = seuil_haut / 2;
+    filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas);
 endfunction
 
 // ========================
 // 1) REHAUSSEMENT DE CANNY
 // ========================
 
-// La première étape est de réduire le bruit de l'image originale avant d'en détecter les contours
+// Avant de chercher les contours de l'image, on commence par en réduire le bruit. Pour cela on applique un filtre gaussien
 // Ceci permet d'éliminer les pixels isolés qui pourraient donner une forte intensité lors du calcul du gradient et donc de faux positifs
 function image_filtre = appliquerFiltre(image, masque)
     // Pré-requis 
     masque = normaliserMasque(masque);
     image = agrandirImage(image);
 
-    demi_taille_masque_x = floor(size(masque, 1) / 2);
-    demi_taille_masque_y = floor(size(masque, 2) / 2);
     [nb_lignes_image, nb_colonnes_image] = size(image); 
-    [taille_x_masque, taille_y_masque] = size(masque); 
 
-    // Faire le dessin pour bien comprendre les valeures des index. On itère sur les pixels de l'image et non sur le cadre augmenté.
+    // Cette fonction doit être générique et pouvoir appliquer n'importe quel filtre (pas forcément carré)
+    [taille_x_masque, taille_y_masque] = size(masque); 
+    demi_taille_masque_x = floor(taille_x_masque / 2);
+    demi_taille_masque_y = floor(taille_y_masque / 2);
+
+    // Faire le dessin pour bien comprendre les valeures des index. On itère sur les pixels de l'image et non sur le cadre augmenté
     for i_image = 1 + demi_taille_masque_x : nb_lignes_image - demi_taille_masque_x
         for j_image = 1 + demi_taille_masque_y : nb_colonnes_image - demi_taille_masque_y
-            somme = 0; // Faire la somme pour chaque pixel de l'image
+            somme = 0; // Pour chaque pixel, résultat (partiel) calculé lors de l'application du masque
             x2 = i_image - (demi_taille_masque_x + 1);
             y2 = j_image - (demi_taille_masque_y + 1);
 
@@ -70,76 +82,26 @@ function image_filtre = appliquerFiltre(image, masque)
                     somme = somme + (pixel_masque * pixel_image);
                 end
             end
-            // Le résultat est de la taille de l'image initiale, avant aggrandissement, création à la volée.
-            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme;
+            // Le résultat est de la taille de l'image initiale (avant aggrandissement), création à la volée
+            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme; // TODO: Optimiser en déclarant la matrice 'image_filtre' avant les boucles ?
         end
     end
 endfunction
 
-// Calcul pour chaque pixel de l'image, la norme du gradient et l'angle de la normale au gradient.
-// Un filtre gaussien doit déjà avoir été appliqué à l'image d'entrée.
-function [norme_gradient, angle_normale_gradient] = calculGradient(image)
-    // Pré-requis et initialisations
-    masque_convolution_x = [1, 0, -1]; // Donné dans le cours
-    masque_convolution_y = [1;0;-1]; 
-
-    matrice_gradient_x = appliquerFiltre(image, masque_convolution_x); 
-    matrice_gradient_y = appliquerFiltre(image, masque_convolution_y); 
-
-    [nb_lignes_image, nb_colonnes_image] = size(image); 
-
-    norme_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'norme_gradient'
-    angle_normale_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'eo'
-
-    // On calcul pour chaque pixels de l'image
-    for x = 1 : nb_lignes_image
-        for y = 1 : nb_colonnes_image
-            Jx = matrice_gradient_x(x, y);
-            Jy = matrice_gradient_y(x, y);
-            norme_gradient(x, y) = sqrt(Jx**2 + Jy**2); 
-            angle_normale_gradient(x, y) = atan(-Jy, Jx); // Résultat en radians, à convertir en degrés et à normaliser
-            angle_normale_gradient(x, y) = approxAngleNormaleGradient(angle_normale_gradient(x, y));
-        end
-    end
-endfunction
-
-function angle_degre = approxAngleNormaleGradient(angle_radian)
-    angle_degre = radianEnDegre(angle_radian);
-    if (angle_degre < 0) then
-        angle_degre = angle_degre + 180; // Se ramener au demi cercle trigo supérieur
-    end
-    // On veut maintenant n'avoir que des valeurs 0, 45, 90, 135 ou 180°
-    seuil_min_45 = 45 / 2;
-    seuil_min_90 = (90 + 45) / 2;
-    seuil_min_135 = (135 + 90) / 2;
-    seuil_max_135 = (180 + 135) / 2;
-
-    // On sait que valeur_degre > 0
-    if angle_degre >= seuil_min_45 & angle_degre < seuil_min_90 then
-        angle_degre = 45;
-    elseif angle_degre >= seuil_min_90 & angle_degre < seuil_min_135 then
-        angle_degre = 90;
-    elseif angle_degre >= seuil_min_135 & angle_degre < seuil_max_135  then
-        angle_degre = 135;
-    else
-        angle_degre = 0; // Pour le cas de 180°, on re-boucle sur 0
-    end
-endfunction
-
-// Pour pouvoir appliquer un masque sur l'image, on doit pouvoir se placer sur des pixels se trouvant à côté de notre image de départ.
+// Pour pouvoir appliquer un masque sur l'image, on doit pouvoir se placer sur des pixels se trouvant à côté de notre image de départ
 function image_aggrandie = agrandirImage(image, masque)
     [nb_lignes_masque, nb_colonnes_masque] = size(masque);
     [nb_lignes_image, nb_colonnes_image] = size(image);
 
-    demi_taille_masque_x = floor(nb_lignes_masque / 2); // Permet de savoir combien de pixels il faut agrandir le cadre de notre image originale. Lignes ou colonnes peu importe car masque carré. Floor = arrondi vers le bas.
+    demi_taille_masque_x = floor(nb_lignes_masque / 2); // Permet de savoir combien de pixels il faut agrandir le cadre de notre image originale sur chaque bord
     demi_taille_masque_y = floor(nb_colonnes_masque / 2); // On doit fonctionner peu importe la taille du masque, donc il faut différencier les lignes et les colonnes
 
     // Création d'une nouvelle matrice (vide) de taille aggrandie.
-    nb_lignes_aggrandie = nb_lignes_image + 2 * demi_taille_masque_x; // On multiplie par 2 car on souhaite agrandir sur les quatres extrémitées
+    nb_lignes_aggrandie = nb_lignes_image + 2 * demi_taille_masque_x; // On multiplie par 2 car on souhaite agrandir sur chaque extrémitées
     nb_colonnes_aggrandie = nb_colonnes_image + 2 * demi_taille_masque_y;
     image_aggrandie = zeros(nb_lignes_aggrandie, nb_colonnes_aggrandie);
 
-    // On replace maintenant notre image originale dans la nouvelle matrice en se décallant correctement par rapport à ce qu'on a aggrandi. On veux l'image originale au centre.
+    // On replace maintenant notre image originale dans la nouvelle matrice en se décallant correctement par rapport à ce qu'on a aggrandi. On veux l'image originale au centre
     for x = demi_taille_masque_x :(nb_lignes_aggrandie - demi_taille_masque_x)
         for y = demi_taille_masque_y :(nb_colonnes_aggrandie - demi_taille_masque_y)
             // On reprends les pixels de l'image initiale depuis le début
@@ -152,14 +114,62 @@ function image_aggrandie = agrandirImage(image, masque)
     end
 endfunction
 
+// Calcul pour chaque pixel de l'image, la norme du gradient et l'angle de la normale au gradient
+function [norme_gradient, angle_normale_gradient] = calculGradient(image_filtre)
+    // Pré-requis et initialisations
+    masque_convolution_x = [1, 0, -1]; // Donné dans le cours
+    masque_convolution_y = [1;0;-1]; 
+
+    matrice_gradient_x = appliquerFiltre(image_filtre, masque_convolution_x); 
+    matrice_gradient_y = appliquerFiltre(image_filtre, masque_convolution_y); 
+
+    [nb_lignes_image, nb_colonnes_image] = size(image_filtre); 
+
+    norme_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'es'
+    angle_normale_gradient = zeros(nb_lignes_image, nb_colonnes_image); // Correspond à 'eo'
+
+    for x = 1 : nb_lignes_image
+        for y = 1 : nb_colonnes_image
+            Jx = matrice_gradient_x(x, y); // Gradient en x
+            Jy = matrice_gradient_y(x, y); // Gradient en y
+            norme_gradient(x, y) = sqrt(Jx**2 + Jy**2); // La norme du gradient correspond à son intensité
+            angle_temp = atan(-Jy, Jx); // Résultat en radians, à convertir en degrés et à normaliser
+            angle_normale_gradient(x, y) = approxAngleNormaleGradient(angle_temp); // L'angle de la normale au gradient nous donne la direction du contour
+        end
+    end
+endfunction
+
+// TODO: Pourquoi on fait ça ?
+function angle_degre_normalise = approxAngleNormaleGradient(angle_radian)
+    angle_degre = radianEnDegre(angle_radian);
+    if (angle_degre < 0) then
+        angle_degre = angle_degre + 180; // Se ramener au demi cercle trigo supérieur
+    end
+    // On veut maintenant n'avoir que des valeurs 0, 45, 90, 135 ou 180°
+    seuil_min_45 = 45 / 2;
+    seuil_min_90 = (90 + 45) / 2;
+    seuil_min_135 = (135 + 90) / 2;
+    seuil_max_135 = (180 + 135) / 2;
+
+    // On sait que valeur_degre > 0
+    if angle_degre >= seuil_min_45 & angle_degre < seuil_min_90 then
+        angle_degre_normalise = 45;
+    elseif angle_degre >= seuil_min_90 & angle_degre < seuil_min_135 then
+        angle_degre_normalise = 90;
+    elseif angle_degre >= seuil_min_135 & angle_degre < seuil_max_135  then
+        angle_degre_normalise = 135;
+    else
+        angle_degre_normalise = 0; // Pour le cas de 180°, on re-boucle sur 0
+    end
+endfunction
+
 // ==============================
 // 2) SUPRESSION DES NON-MAXIMUMS
 // ==============================
 
 // Une forte intensité ne suffit pas à décider si un point correspond à un contour ou non. Il faut que ces fortes intensités correspondent à des maximas locaux.
-function [norme_gradient, angle_normale_gradient, non_maximums] = supprimerNonMaximums(image)
+function [norme_gradient, angle_normale_gradient, non_maximums] = supprimerNonMaximums(image, norme_gradient, angle_normale_gradient)
     [nb_lignes_image, nb_colonnes_image] = size(image);
-    [norme_gradient, angle_normale_gradient] = calculGradient(image);
 
     non_maximums = zeros(nb_lignes_image, nb_colonnes_image);
 
@@ -167,40 +177,12 @@ function [norme_gradient, angle_normale_gradient, non_maximums] = supprimerNonMa
         for y = 1 : nb_colonnes_image
             angle = angle_normale_gradient(x, y);
             [voisin1, voisin2] = recupererVoisins(angle, norme_gradient, x, y);
-            if norme_gradient(x, y) < voisin1 | norme_gradient(x, y) < voisin2 then // Si plus grand qu'au moins un des deux voisins, on supprime
+            if norme_gradient(x, y) < voisin1 | norme_gradient(x, y) < voisin2 then // Si plus petit qu'au moins un des deux voisins, on supprime
                 non_maximums(x, y) = 0;
-            else
+            else // sinon on conserve le contour
                 non_maximums(x, y) = norme_gradient(x, y);
             end
         end       
-    end
-endfunction
-
-function [voisin1, voisin2] = recupererVoisins(angle, norme_gradient, x, y)
-    select angle // En fonction de la valeur de l'angle que l'on a, on récupère des voisins différents
-    case 0 then
-        voisin1 = recupererValeurVoisin(norme_gradient, x , y - 1);
-        voisin2 = recupererValeurVoisin(norme_gradient, x , y + 1);
-    case 45 then
-        voisin1 = recupererValeurVoisin(norme_gradient, x - 1, y + 1);
-        voisin2 = recupererValeurVoisin(norme_gradient, x + 1, y - 1);
-    case 90 then
-        voisin1 = recupererValeurVoisin(norme_gradient, x - 1, y);
-        voisin2 = recupererValeurVoisin(norme_gradient, x + 1, y);
-    case 135 then
-        voisin1 = recupererValeurVoisin(norme_gradient, x - 1, y - 1);
-        voisin2 = recupererValeurVoisin(norme_gradient, x + 1, y + 1);
-    end
-    // On a fait une normalisation de l'angle, i n'y a pas d'autre valeurs possible que ces 4 là
-endfunction
-
-// Retourne la norme d'un pixel ou 0 si le pixel est en dehors de la matrice
-function norme = recupererValeurVoisin(norme_gradient, x, y)
-    [nb_lignes, nb_colonnes] = size(norme_gradient);
-    if x > 0 & x <= nb_lignes & y > 0 & y <= nb_colonnes then // Si on tente d'accéder à un pixel en dehors de notre matrice, on renvoi 0
-        norme = norme_gradient(x, y); 
-    else
-        norme = 0 ;
     end
 endfunction
 
@@ -208,29 +190,84 @@ endfunction
 // 3) SEUILLAGE PAR HYSTERESIS
 // ===========================
 
-// Les contours donnés par les fortes valeurs du gradient sont souvent étalés, voire flous. Le seuillage à hystérésis permet de les affiner et de ne conserver que les contours les plus cohérents
-function seuillageHysteresis(image, seuil_haut, seuil_bas)
+// Les contours donnés par les fortes valeurs du gradient sont souvent étalés, voire flous. Le seuillage à hystérésis permet de les affiner et de ne conserver que les contours les plus cohérents.
+// Un pixel de contour ne peux pas être un pixel isolé
+function contours = seuillageHysteresis(non_maximums, angle_normale_gradient, seuil_haut, seuil_bas)
+    // seuil haut = th et seuil bas = tl
     assert_checktrue(seuil_haut > seuil_bas);
-    // TODO:
 
-    il faut faire 2x2 boucles (un part puce du sujet)
-    pour avoir la tagente à e0 il faut ajouter 90° (si e0+90 > 180 on fait -180)
+    // On veux une image finale composée uniquement de blanc et de noir
+    blanc = 255;
+    noir = 0;
+
+    [nb_lignes, nb_colonnes] = size(angle_normale_gradient); 
+    contours = zeros(nb_lignes, nb_colonnes); // Initialise une image toute noir à laquelle on rajoutera en blanc les contours retenus
+
+    // Premier passage sur l'image, on garde tous les pixels dont la norme du gradient (intensité) est supérieure au seuil haut
+    for i = 1:nb_lignes
+        for j = 1:nb_colonnes
+            if non_maximums(i,j) > seuil_haut then 
+                contours(i,j) = blanc;
+            end
+        end
+    end
+
+    // Deuxième passage sur l'image résultante, on regarde si les pixels dont l'intensité du gradient est comprise entre les deux seuils et on accepte si le pixel est relié à un autre pixel déjà compté comme contour
+    // Doit être faire dans un second passage sur l'image car on regarde les voisins, qui pourrait ne pas encore avoir été traité (en dessous, à droite...). Cependant on augmente la compléxité de l'algorithme
+    for i = 1:nb_lignes
+        for j = 1:nb_colonnes
+            if non_maximums(i,j) >= seuil_bas & non_maximums(i,j) <= seuil_haut then 
+                [voisin1, voisin2] = recupererVoisins(angle_normale_gradient(i,j), non_maximums, i, j); // Récupère les voisins perpendiculairement à la normale
+                if voisin1 > seuil_haut & voisin2 > seuil_haut then // Si les voisins sont acceptés comme contours, leur valeur est supérieur au seuil haut
+                    contours(i,j) = blanc;
+                end
+            end
+        end
+    end
+    // Les pixels inférieurs au seuil bas sont déjà rejeté puisque la matrice 'contours' est initialisée en noir (0)
 endfunction
-
 
 // =====================
 // FONCTIONS UTILITAIRES
 // =====================
 
-// On divise par la somme des pixels du masque pour ne pas modifier la valeur moyenne de l'image
-function masque = normaliserMasque(masque)
-    if sum(masque) <> 0 then // On s'assure de ne pas tenter une division par 0 (cas des masques de convolutions pour le calcul des gradients par exemple)
-        masque = (1 / sum(masque)). * masque; 
+function [voisin1, voisin2] = recupererVoisins(angle, norme_gradient, x, y)
+    select angle // En fonction de la valeur de l'angle on récupère des voisins différents
+    case 0 then
+        voisin1 = recupererValeurPixel(norme_gradient, x , y - 1);
+        voisin2 = recupererValeurPixel(norme_gradient, x , y + 1);
+    case 45 then
+        voisin1 = recupererValeurPixel(norme_gradient, x - 1, y + 1);
+        voisin2 = recupererValeurPixel(norme_gradient, x + 1, y - 1);
+    case 90 then
+        voisin1 = recupererValeurPixel(norme_gradient, x - 1, y);
+        voisin2 = recupererValeurPixel(norme_gradient, x + 1, y);
+    case 135 then
+        voisin1 = recupererValeurPixel(norme_gradient, x - 1, y - 1);
+        voisin2 = recupererValeurPixel(norme_gradient, x + 1, y + 1);
+    end
+    // On a fait une normalisation de l'angle, il n'y a pas d'autre valeurs possible que ces 4 là
+endfunction
+
+// Retourne la norme d'un pixel ou 0 si le pixel est en dehors de la matrice
+function norme = recupererValeurPixel(norme_gradient, x, y)
+    [nb_lignes, nb_colonnes] = size(norme_gradient);
+    if x > 0 & x <= nb_lignes & y > 0 & y <= nb_colonnes then 
+        norme = norme_gradient(x, y); 
+    else
+        norme = 0 ;
     end
 endfunction
 
 function degre = radianEnDegre(radian)
     degre = 180 * radian / %pi;
+endfunction
+
+// On divise par la somme des pixels du masque pour ne pas modifier la valeur moyenne de l'image lors de l'application d'un masque
+function masque = normaliserMasque(masque)
+    if sum(masque) <> 0 then // On s'assure de ne pas tenter une division par 0 (cas des masques de convolutions pour le calcul des gradients par exemple)
+        masque = (1 / sum(masque)). * masque; 
+    end
 endfunction
 
 function matrice_image = chargerImage(path, isRGB)
