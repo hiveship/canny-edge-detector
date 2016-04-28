@@ -6,16 +6,20 @@ function main()
     4, 9, 12, 9, 4;
     2, 4, 5, 4, 2];
 
-    //image = chargerImage('\\Mac\Home\Desktop\TraitementImage\LENNA.jpg', 0);
-    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\olympics2.jpg', 1);
+    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\olympics.jpg', 1);
 
-    contours = filtreCanny(image, masque_gaussien, 28, 14); // Version "manuelle" 
-    //contours = filtreCanny(image, masque_gaussien, 20); // Version semi-automatique TODO: pas terminée
-    
+    // VERSION MANUELLE
+    // ----------------
+    // contours = filtreCanny(image, masque_gaussien, 20, 15); // Version "manuelle"
+
+    // VERSION SEMI-AUTOMATIQUE
+    // ------------------------
+    seuil = 0.8; // Pourcentage pour le filtre semi automatique. Faire varier en 0.70 et 0.95
+    contours = filtreCannySemiAuto(image, masque_gaussien, seuil); // Version semi-automatique
+
     // Affichage de l'image originale et des contours détectés par l'algorithme de Canny
     render = cat(2, image, contours);
     afficherImage(render);
-
 endfunction
 
 // =============================
@@ -29,26 +33,34 @@ function contours = filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas)
 
     // Etape 1 : Appliquer un filtre gaussien pour réduction du bruit
     image_filtre = appliquerFiltre(image, masque_gaussien); 
-    
+
     // Etape 2 : Calcul des gradients en x et y ainsi que l'angle de la normale
     [norme_gradient, angle_normale_gradient] = calculGradient(image_filtre);
-    
+
     // Etape 3 : Supprimer les non maximums
     non_maximums = supprimerNonMaximums(norme_gradient, angle_normale_gradient);
-    
+
     // Etape 4 : Seuillage par hystérésis
     contours = seuillageHysteresis(non_maximums, angle_normale_gradient, seuil_haut, seuil_bas);
-    
-    // Affichage de toute les étapes
-    //render = cat(2, image, non_maximums, contours);
-   // afficherImage(render);
 endfunction
 
 // Il n'existe pas actuellement de méthode générique pour déterminer des seuils produisant des résultats satisfaisants sur tous les types d'images.
-function image_contours = filtreCannySemiAuto(image, masque_gaussien, seuil_haut)
-    // TODO: Il faut calculer le seuil haut à l'aidre de la fonction de répartition (voir sujet de TP)
-     seuil_bas = seuil_haut / 2;
-     filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas);
+function contours = filtreCannySemiAuto(image, masque_gaussien, seuil)
+    // Etape 1 : Appliquer un filtre gaussien pour réduction du bruit
+    image_filtre = appliquerFiltre(image, masque_gaussien); 
+
+    // Etape 2 : Calcul des gradients en x et y ainsi que l'angle de la normale
+    [norme_gradient, angle_normale_gradient] = calculGradient(image_filtre);
+
+    // Etape 3 : Supprimer les non maximums
+    non_maximums = supprimerNonMaximums(norme_gradient, angle_normale_gradient);
+
+    // Etape 4 : détermination des seuils de manière semi-automatique
+    seuil_haut = calculSeuilHaut(norme_gradient, seuil);
+    seuil_bas = seuil_haut / 2;
+
+    // Etape 4 : Seuillage par hystérésis
+    contours = seuillageHysteresis(non_maximums, angle_normale_gradient, seuil_haut, seuil_bas);
 endfunction
 
 // ========================
@@ -68,7 +80,7 @@ function image_filtre = appliquerFiltre(image, masque)
     [taille_x_masque, taille_y_masque] = size(masque); 
     demi_taille_masque_x = floor(taille_x_masque / 2);
     demi_taille_masque_y = floor(taille_y_masque / 2);
-   
+
     // Faire le dessin pour bien comprendre les valeures des index. On itère sur les pixels de l'image et non sur le cadre augmenté
     for i_image = 1 + demi_taille_masque_x : nb_lignes_image - demi_taille_masque_x
         for j_image = 1 + demi_taille_masque_y : nb_colonnes_image - demi_taille_masque_y
@@ -212,21 +224,87 @@ function contours = seuillageHysteresis(non_maximums, angle_normale_gradient, se
             end
         end
     end
-    
+
     // Deuxième passage sur l'image résultante, on regarde si les pixels dont l'intensité du gradient est comprise entre les deux seuils et on accepte si le pixel est relié à un autre pixel déjà compté comme contour
     // Doit être faire dans un second passage sur l'image car on regarde les voisins, qui pourrait ne pas encore avoir été traité (en dessous, à droite...). Cependant on augmente la compléxité de l'algorithme
     for i = 1:nb_lignes
-       for j = 1:nb_colonnes
+        for j = 1:nb_colonnes
             if non_maximums(i,j) >= seuil_bas & non_maximums(i,j) <= seuil_haut then 
                 angle = angle_normale_gradient(i,j) + 90; // Perpendiculaire à la normale du gradient
+                if angle >= 180 then
+                    angle = angle - 180;
+                end
+
                 [voisin1, voisin2] = recupererVoisins(angle, non_maximums, i, j); // Récupère les voisins perpendiculairement à la normale
                 if voisin1 > seuil_haut & voisin2 > seuil_haut then // Si les voisins sont acceptés comme contours, leur valeur est supérieur au seuil haut
                     contours(i,j) = blanc;
                 end
             end
-       end
-   end
+        end
+    end
     // Les pixels inférieurs au seuil bas sont déjà rejeté puisque la matrice 'contours' est initialisée en noir (0)
+endfunction
+
+// ========================
+// DETERMINATION DES SEUILS
+// ========================
+
+function seuil_haut = calculSeuilHaut(norme_gradient, pourcentage)
+    [histogramme, pas] = calculHistogramme(norme_gradient);
+    fonctionRepartition = calculFonctionRepartition(histogramme);
+
+    nombre_pixels = length(norme_gradient);
+    pivot = nombre_pixels * pourcentage; // Pixel à partir duquel tout les pixels sont au dessus ou au dessous du pourcentage
+
+    seuil_haut_index = 1;
+    // Détermination du seuil haut
+    for i = 1 : length(fonctionRepartition)
+        if ((pivot - fonctionRepartition(seuil_haut_index)) > (pivot - fonctionRepartition(i))) & (pivot - fonctionRepartition(i) > 0) then
+            seuil_haut_index = i; // Position du seuil haut dans la fonction de répartition
+        end
+    end
+    seuil_haut = pas * (seuil_haut_index - 1); // -1 car le pas avait été incrémenté de 1 dans le calcul de l'histogramme
+
+    // Validation du calcul de seuil haut
+    compare = perctl(norme_gradient, pourcentage*100);
+    compare = floor(compare(1));
+    assert_checktrue(isequal(floor(seuil_haut),compare)); // round car forcément un écart de précision
+endfunction
+
+function [histogramme, pas] = calculHistogramme(norme_gradient)
+    // L'histogramme représente la distribution des intensité de l'image
+    [nb_lignes, nb_colonnes] = size(norme_gradient);
+
+    norme_max = max(norme_gradient);
+    norme_min = min(norme_gradient);
+    ecart_min_max = norme_max - norme_min;
+
+    nb_pas = 10000; // Précision de l'histogramme
+    pas = ecart_min_max / (nb_pas - 1);
+
+    histogramme = zeros(1, nb_pas);
+
+    // On parcours chaque pixel de l'image et on place sa valeure au bon endroit dans l'histogramme
+    for i = 1 : nb_lignes
+        for j = 1 : nb_colonnes
+            // Le pixel est forcément entre norme_min et norme_max
+            valeur_pixel = norme_gradient(i,j);
+            position = floor((valeur_pixel - norme_min) / pas ) + 1;// position du pixel dans l'histogramme. La division ne rends pas forcément un résultat entier. Décallage par rapport à 0
+            histogramme(1, position) = histogramme(1, position) + 1;
+        end
+    end
+    //plot(histogramme);
+endfunction
+
+// Représente le nombre de pixels inférieur ou égal au pas calculé dans l'histogramme
+function fonctionRepartition = calculFonctionRepartition(histogramme)
+    nb_pas = length(histogramme);
+    fonctionRepartition = zeros(1, nb_pas);
+    fonctionRepartition(1) = histogramme(1); // Initialisation
+    for i = 2 : nb_pas
+        fonctionRepartition(i) = fonctionRepartition(i - 1) + histogramme(i - 1);
+    end
+    // plot(fonctionRepartition);
 endfunction
 
 // =====================
@@ -248,11 +326,11 @@ function [voisin1, voisin2] = recupererVoisins(angle, norme_gradient, x, y)
         voisin1 = recupererValeurPixel(norme_gradient, x - 1, y - 1);
         voisin2 = recupererValeurPixel(norme_gradient, x + 1, y + 1);
     end
-    // On a fait une normalisation de l'angle, il n'y a pas d'autre valeurs possible que ces 4 là
+    // On a fait une normalisation de l'angle, il n'y a pas d'autre valeurs possible que ces 4 là. 
 endfunction
 
 // Retourne la norme d'un pixel ou 0 si le pixel est en dehors de la matrice
-function norme = recupererValeurPixel(norme_gradient, x, y)
+function norme = recupererValeurPixel(matrice, x, y)
     [nb_lignes, nb_colonnes] = size(norme_gradient);
     if x > 0 & x <= nb_lignes & y > 0 & y <= nb_colonnes then 
         norme = norme_gradient(x, y); 
@@ -286,9 +364,5 @@ function afficherImage(matrice_image)
     imshow(uint8(matrice_image));
 endfunction
 
-function image = ecrireImage(matrice_image, nom_fichier)
-    // Sauvegarde l'image sur le système de fichier, à partir de l'emplacement courant
-    image = imwrite(matrice_image, nom_fichier);
-endfunction
-
+clc;
 main
