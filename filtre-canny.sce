@@ -6,20 +6,24 @@ function main()
     4, 9, 12, 9, 4;
     2, 4, 5, 4, 2];
 
-    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\olympics.jpg', 1);
+    assert_checktrue(isequal(masque_gaussien, masque_gaussien.')); // Une matrice est symétrique si elle est égale à sa transposée.  
+
+    image = chargerImage('\\Mac\Home\Desktop\TraitementImage\BVOZEL\olympics.jpg', 1); // TODO: A remplacer par l'utilisateur
 
     // VERSION MANUELLE
     // ----------------
-    // contours = filtreCanny(image, masque_gaussien, 20, 15); // Version "manuelle"
+    contours = filtreCanny(image, masque_gaussien, 50, 10); // Version "manuelle" à deux seuils TODO: Les seuils sont dépendant de l'image dont on cherche les contours
 
     // VERSION SEMI-AUTOMATIQUE
     // ------------------------
-    seuil = 0.8; // Pourcentage pour le filtre semi automatique. Faire varier en 0.70 et 0.95
-    contours = filtreCannySemiAuto(image, masque_gaussien, seuil); // Version semi-automatique
+    centile = 0.85; // Pourcentage pour le filtre semi automatique. Faire varier en 0.70 et 0.95
+    assert_checktrue(centile > 0);
+    assert_checktrue(centile < 1);
+    contours = filtreCannySemiAuto(image, masque_gaussien, centile); // Version semi-automatique
 
     // Affichage de l'image originale et des contours détectés par l'algorithme de Canny
-    render = cat(2, image, contours);
-    afficherImage(render);
+    //render = cat(2, image, contours);
+    afficherImage(contours);
 endfunction
 
 // =============================
@@ -29,8 +33,6 @@ endfunction
 // Un seuil trop bas peut conduire à la détection de faux positifs. Inversement, un seuil trop haut peut empêcher la détection de contours peu marqués 
 // Soucis : seuils difficiles à trouver et changent d'une image à l'autre ! Il faut y aller à taton pour chaque image pour avoir un bon rendu, c'est lourd et nécéssite une intervention manuelle
 function contours = filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas)
-    assert_checktrue(isequal(masque_gaussien, masque_gaussien.')); // Une matrice est symétrique si elle est égale à sa transposée.  
-
     // Etape 1 : Appliquer un filtre gaussien pour réduction du bruit
     image_filtre = appliquerFiltre(image, masque_gaussien); 
 
@@ -45,7 +47,7 @@ function contours = filtreCanny(image, masque_gaussien, seuil_haut, seuil_bas)
 endfunction
 
 // Il n'existe pas actuellement de méthode générique pour déterminer des seuils produisant des résultats satisfaisants sur tous les types d'images.
-function contours = filtreCannySemiAuto(image, masque_gaussien, seuil)
+function contours = filtreCannySemiAuto(image, masque_gaussien, centile)
     // Etape 1 : Appliquer un filtre gaussien pour réduction du bruit
     image_filtre = appliquerFiltre(image, masque_gaussien); 
 
@@ -56,7 +58,7 @@ function contours = filtreCannySemiAuto(image, masque_gaussien, seuil)
     non_maximums = supprimerNonMaximums(norme_gradient, angle_normale_gradient);
 
     // Etape 4 : détermination des seuils de manière semi-automatique
-    seuil_haut = calculSeuilHaut(norme_gradient, seuil);
+    seuil_haut = calculSeuilHaut(norme_gradient, centile);
     seuil_bas = seuil_haut / 2;
 
     // Etape 4 : Seuillage par hystérésis
@@ -96,7 +98,7 @@ function image_filtre = appliquerFiltre(image, masque)
                 end
             end
             // Le résultat est de la taille de l'image initiale (avant aggrandissement), création à la volée
-            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme; // TODO: Optimiser en déclarant la matrice 'image_filtre' avant les boucles ?
+            image_filtre(i_image - demi_taille_masque_x, j_image - demi_taille_masque_y) = somme; 
         end
     end
 endfunction
@@ -153,7 +155,7 @@ function [norme_gradient, angle_normale_gradient] = calculGradient(image_filtre)
     end
 endfunction
 
-// On se ramène à des directions connues (ayant une valeur en degrée)
+// On se ramène à des directions connues (ayant une valeur en degrée) pour la direction des contours
 function angle_degre_normalise = approxAngleNormaleGradient(angle_radian)
     angle_degre = radianEnDegre(angle_radian);
     if (angle_degre < 0) then
@@ -167,13 +169,13 @@ function angle_degre_normalise = approxAngleNormaleGradient(angle_radian)
 
     // On sait que valeur_degre > 0
     if angle_degre >= seuil_min_45 & angle_degre < seuil_min_90 then
-        angle_degre_normalise = 45;
+        angle_degre_normalise = 45; // Diagonale
     elseif angle_degre >= seuil_min_90 & angle_degre < seuil_min_135 then
-        angle_degre_normalise = 90;
+        angle_degre_normalise = 90; // Vertical
     elseif angle_degre >= seuil_min_135 & angle_degre < seuil_max_135  then
-        angle_degre_normalise = 135;
+        angle_degre_normalise = 135; // Diagonale
     else
-        angle_degre_normalise = 0; // Pour le cas de 180°, on re-boucle sur 0
+        angle_degre_normalise = 0; // Pour le cas de 180°, on re-boucle sur 0 (horizontal)
     end
 endfunction
 
@@ -181,10 +183,10 @@ endfunction
 // 2) SUPRESSION DES NON-MAXIMUMS
 // ==============================
 
-// Une forte intensité ne suffit pas à décider si un point correspond à un contour ou non. Il faut que ces fortes intensités correspondent à des maximas locaux.
+// Une forte intensité ne suffit pas à décider si un point correspond à un contour ou non car les contours ne sont souvent pas 'brut' mais 'progressifs'
+// Il faut que ces fortes intensités correspondent à des maximas locaux (pour ne pas avoir un contours trop épais)
 function [non_maximums] = supprimerNonMaximums(norme_gradient, angle_normale_gradient)
     [nb_lignes, nb_colonnes] = size(norme_gradient);
-
     non_maximums = zeros(nb_lignes, nb_colonnes);
 
     for x = 1 : nb_lignes
@@ -212,16 +214,18 @@ function contours = seuillageHysteresis(non_maximums, angle_normale_gradient, se
 
     // On veux une image finale composée uniquement de blanc et de noir
     blanc = 255;
+    noir = 0;
 
     [nb_lignes, nb_colonnes] = size(angle_normale_gradient); 
-    contours = zeros(nb_lignes, nb_colonnes); // Initialise une image toute noir à laquelle on rajoutera en blanc les contours retenus
-
+    contours = non_maximums;
     // Premier passage sur l'image, on garde tous les pixels dont la norme du gradient (intensité) est supérieure au seuil haut
     for i = 1:nb_lignes
         for j = 1:nb_colonnes
             if non_maximums(i,j) > seuil_haut then
-                contours(i, j) = blanc; 
-            end
+                contours(i,j) = blanc; 
+            elseif non_maximums(i,j) < seuil_bas
+                contours(i,j) = noir; 
+            end 
         end
     end
 
@@ -238,6 +242,8 @@ function contours = seuillageHysteresis(non_maximums, angle_normale_gradient, se
                 [voisin1, voisin2] = recupererVoisins(angle, non_maximums, i, j); // Récupère les voisins perpendiculairement à la normale
                 if voisin1 > seuil_haut & voisin2 > seuil_haut then // Si les voisins sont acceptés comme contours, leur valeur est supérieur au seuil haut
                     contours(i,j) = blanc;
+                else
+                    contours(i,j) = noir;
                 end
             end
         end
@@ -249,12 +255,13 @@ endfunction
 // DETERMINATION DES SEUILS
 // ========================
 
-function seuil_haut = calculSeuilHaut(norme_gradient, pourcentage)
+// Récupère la valeur du centile demandé à partir de la fonction de répartition de l'histogramme de la norme des gradients
+function seuil_haut = calculSeuilHaut(norme_gradient, centile)
     [histogramme, pas] = calculHistogramme(norme_gradient);
     fonctionRepartition = calculFonctionRepartition(histogramme);
 
     nombre_pixels = length(norme_gradient);
-    pivot = nombre_pixels * pourcentage; // Pixel à partir duquel tout les pixels sont au dessus ou au dessous du pourcentage
+    pivot = nombre_pixels * centile; // Pixel à partir duquel tout les pixels sont au dessus ou au dessous du centile voulu
 
     seuil_haut_index = 1;
     // Détermination du seuil haut
@@ -266,9 +273,7 @@ function seuil_haut = calculSeuilHaut(norme_gradient, pourcentage)
     seuil_haut = pas * (seuil_haut_index - 1); // -1 car le pas avait été incrémenté de 1 dans le calcul de l'histogramme
 
     // Validation du calcul de seuil haut
-    compare = perctl(norme_gradient, pourcentage*100);
-    compare = floor(compare(1));
-    assert_checktrue(isequal(floor(seuil_haut),compare)); // round car forcément un écart de précision
+    compare = perctl(norme_gradient, centile * 100);
 endfunction
 
 function [histogramme, pas] = calculHistogramme(norme_gradient)
@@ -279,7 +284,7 @@ function [histogramme, pas] = calculHistogramme(norme_gradient)
     norme_min = min(norme_gradient);
     ecart_min_max = norme_max - norme_min;
 
-    nb_pas = 10000; // Précision de l'histogramme
+    nb_pas = 1000; // Précision de l'histogramme
     pas = ecart_min_max / (nb_pas - 1);
 
     histogramme = zeros(1, nb_pas);
@@ -293,7 +298,7 @@ function [histogramme, pas] = calculHistogramme(norme_gradient)
             histogramme(1, position) = histogramme(1, position) + 1;
         end
     end
-    //plot(histogramme);
+    //  plot(histogramme);
 endfunction
 
 // Représente le nombre de pixels inférieur ou égal au pas calculé dans l'histogramme
@@ -304,13 +309,14 @@ function fonctionRepartition = calculFonctionRepartition(histogramme)
     for i = 2 : nb_pas
         fonctionRepartition(i) = fonctionRepartition(i - 1) + histogramme(i - 1);
     end
-    // plot(fonctionRepartition);
+    //plot(fonctionRepartition);
 endfunction
 
 // =====================
 // FONCTIONS UTILITAIRES
 // =====================
 
+// Récupère les pixels adjacents en fonction de la direction du gradient
 function [voisin1, voisin2] = recupererVoisins(angle, norme_gradient, x, y)
     select angle // En fonction de la valeur de l'angle on récupère des voisins différents
     case 0 then
