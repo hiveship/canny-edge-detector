@@ -34,7 +34,7 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ![input](input.png)
 ![output](output.png)
 
-Want to know more? 
+- Want to know more? 
     + For french speakers: take a look at the project report
     + Wikipedia page: https://en.wikipedia.org/wiki/Canny_edge_detector
 
