@@ -21,7 +21,6 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ## Warning
 
 - Possible issues if you use Scilab 64 bits (Scilab 32 bits preferred)
-- You must increase the stack size to treat large images (`stack size('max')`)
 - All the code, comments and the project report (PDF file provided in this repository) are writen in french
 
 ## How to use this code?
