@@ -31,5 +31,6 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
     
 ## Example
 
-![Result for image1, thresold 86%](original.jpg)
+Input image
+![input](input.jpg)
 
