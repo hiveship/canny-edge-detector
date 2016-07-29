@@ -21,7 +21,7 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ## Warning
 
 - Possible issues if you use Scilab 64 bits (Scilab 32 bits preferred)
-- You must increase the stack size to treat large images (`stack size('max');`)
+- You must increase the stack size to treat large images (`stack size('max')`)
 - All the code, comments and the project report (PDF file provided in this repository) are writen in french
 
 ## How to use this code?
@@ -33,3 +33,8 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 
 ![input](input.png)
 ![output](output.png)
+
+Want to know more ? 
+    + For french speakers: take a look at the project report
+    + Wikipedia page: https://en.wikipedia.org/wiki/Canny_edge_detector
+
