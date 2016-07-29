@@ -31,8 +31,5 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
     
 ## Example
 
-Input
-![input](input.png)
-
-Output
-![output](output.png)
+[input](input.png)
+[output](output.png)
