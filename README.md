@@ -26,6 +26,7 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ## How to use this code?
 
 - Run script in your Scilab env
+    + Make sure you installed the SIVP lib (http://sivp.sourceforge.net/)
     + Take a look at the `main` function and do not hesitate to play with some parameters (original image, Gaussian mask and thresholds)
     
 ## Example
