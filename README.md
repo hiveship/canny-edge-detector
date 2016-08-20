@@ -4,7 +4,7 @@ Scilab implementation of the Canny edge detector during a school project.
 
 The Canny edge detector is an edge detection operator that uses a multi-stage algorithm to detect a wide range of edges in images. It was developed by John F. Canny in 1986.
 
-Among the edge detection methods developed so far, canny edge detection algorithm is one of the most strictly defined methods that provides good and reliable detection. Owing to its optimality to meet with the three criteria for edge detection and the simplicity of process for implementation, it becomes one of the most popular algorithms for edge detection.
+Among the edge detection methods developed so far, canny edge detection algorithm is one of the most strictly defined methods that provide good and reliable detection. Owing to its optimality to meet with the three criteria for edge detection and the simplicity of the process for implementation, it becomes one of the most popular algorithms for edge detection.
 
 ## Steps
 
@@ -21,7 +21,7 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ## Warning
 
 - Possible issues if you use Scilab 64 bits (Scilab 32 bits preferred)
-- All the code, comments and the project report (PDF file provided in this repository) are writen in french
+- All the code, comments and the project report (PDF file provided in this repository) are written in French
 
 ## How to use this code?
 
@@ -35,6 +35,6 @@ Note that the hysteresis threshold can be changed: for a good value, pick someth
 ![output](output.png)
 
 - Want to know more? 
-    + For french speakers: take a look at the project report
+    + For French speakers: take a look at the project report
     + Wikipedia page: https://en.wikipedia.org/wiki/Canny_edge_detector
 
